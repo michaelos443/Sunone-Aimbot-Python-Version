@@ -1,3 +1,13 @@
+"""Base module for Seaborn visualization library.
+
+This module provides core functionality for Seaborn visualizations, including
+semantic mappings, plot objects, and other foundational components that support
+the library's higher-level plotting functions.
+
+The module implements classes that handle the mapping of variables in a dataset
+to visual properties of a plot, following the principles of the grammar of graphics.
+"""
+
 from __future__ import annotations
 import warnings
 import itertools
@@ -6,6 +16,7 @@ from collections import UserString
 from collections.abc import Iterable, Sequence, Mapping
 from numbers import Number
 from datetime import datetime
+from typing import Dict, List, Union, Tuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -202,7 +213,7 @@ class HueMapping(SemanticMapping):
 
         return value
 
-    def infer_map_type(self, palette, norm, input_format, var_type):
+    def infer_map_type(self, palette, norm, input_format, var_type) -> str:
         """Determine how to implement the mapping."""
         if palette in QUAL_PALETTES:
             map_type = "categorical"
@@ -217,7 +228,12 @@ class HueMapping(SemanticMapping):
 
         return map_type
 
-    def categorical_mapping(self, data, palette, order):
+    def categorical_mapping(
+            self,
+            data: List[Union[str, int]],
+            palette: Union[Dict[str, str], str, List[str], None],
+            order: Optional[List[str]],
+    ) -> Tuple[List[str], Dict[str, str]]:
         """Determine colors when the hue mapping is categorical."""
         # -- Identify the order and name of the levels
 
@@ -251,7 +267,12 @@ class HueMapping(SemanticMapping):
 
         return levels, lookup_table
 
-    def numeric_mapping(self, data, palette, norm):
+    def numeric_mapping(
+            self,
+            data,
+            palette,
+            norm,
+    ) -> Tuple[List[float], Dict[float, str], Optional[mpl.colors.Normalize], mpl.colors.Colormap]:
         """Determine colors when the hue variable is quantitative."""
         if isinstance(palette, dict):
 
@@ -436,7 +457,7 @@ class SizeMapping(SemanticMapping):
 
         return levels, lookup_table
 
-    def numeric_mapping(self, data, sizes, norm):
+    def numeric_mapping(self, data, sizes, norm) -> Tuple[List[float], Dict[float, float], mpl.colors.Normalize, Tuple[float, float]]:
 
         if isinstance(sizes, dict):
             # The presence of a norm object overrides a dictionary of sizes
