@@ -33,7 +33,7 @@ assert_vector_equal = functools.partial(
 )
 
 
-def assert_gridspec_shape(ax, nrows=1, ncols=1):
+def assert_gridspec_shape(ax, nrows=1, ncols=1) -> None:
 
     gs = ax.get_gridspec()
     assert gs.nrows == nrows
@@ -44,7 +44,7 @@ class MockMark(Mark):
 
     _grouping_props = ["color"]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
 
         super().__init__(*args, **kwargs)
         self.passed_keys = []
@@ -54,7 +54,7 @@ class MockMark(Mark):
         self.passed_orient = None
         self.n_splits = 0
 
-    def _plot(self, split_gen, scales, orient):
+    def _plot(self, split_gen, scales, orient) -> None:
 
         for keys, data, ax in split_gen():
             self.n_splits += 1
@@ -65,7 +65,7 @@ class MockMark(Mark):
         self.passed_scales = scales
         self.passed_orient = orient
 
-    def _legend_artist(self, variables, value, scales):
+    def _legend_artist(self, variables, value, scales) -> mpl.lines.Line2D:
 
         a = mpl.lines.Line2D([], [])
         a.variables = variables
@@ -2199,7 +2199,7 @@ class TestLegend:
 
 class TestDefaultObject:
 
-    def test_default_repr(self):
+    def test_default_repr(self) -> None:
 
         assert repr(Default()) == "<default>"
 
@@ -2207,11 +2207,11 @@ class TestDefaultObject:
 class TestThemeConfig:
 
     @pytest.fixture(autouse=True)
-    def reset_config(self):
+    def reset_config(self) -> None:
         yield
         Plot.config.theme.reset()
 
-    def test_default(self):
+    def test_default(self) -> None:
 
         p = Plot().plot()
         ax = p._figure.axes[0]
@@ -2264,18 +2264,18 @@ class TestThemeConfig:
 class TestDisplayConfig:
 
     @pytest.fixture(autouse=True)
-    def reset_config(self):
+    def reset_config(self) -> None:
         yield
         Plot.config.display.update(PlotConfig().display)
 
-    def test_png_format(self):
+    def test_png_format(self) -> None:
 
         Plot.config.display["format"] = "png"
 
         assert Plot()._repr_svg_() is None
         assert Plot().plot()._repr_svg_() is None
 
-        def assert_valid_png(p):
+        def assert_valid_png(p: Plot) -> None:
             data, metadata = p._repr_png_()
             img = Image.open(io.BytesIO(data))
             assert img.format == "PNG"

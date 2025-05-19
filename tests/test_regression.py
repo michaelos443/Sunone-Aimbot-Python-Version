@@ -94,6 +94,17 @@ class TestLinearPlotter:
         pdt.assert_series_equal(p.x, self.df.x[mask])
         pdt.assert_series_equal(p.y_na, self.df.y_na[mask])
 
+    def test_dropna_all_missing(self):
+        p = lm._LinearPlotter()
+        p.establish_variables(self.df, x="x", y_na="y_na")
+        pdt.assert_series_equal(p.x, self.df.x)
+        pdt.assert_series_equal(p.y_na, self.df.y_na)
+
+        with pytest.warns(UserWarning):
+            p.dropna("x", "y_na")
+        assert len(p.x) == 0
+        assert len(p.y_na) == 0
+
 
 class TestRegressionPlotter:
 
@@ -214,7 +225,7 @@ class TestRegressionPlotter:
     @pytest.mark.parametrize("option", ["logistic", "robust", "lowess"])
     @pytest.mark.skipif(not _no_statsmodels, reason="statsmodels installed")
     def test_statsmodels_missing_errors(self, long_df, option):
-        with pytest.raises(RuntimeError, match=rf"`{option}=True` requires"):
+        with pytest.raises(RuntimeError, match=rf"`{option}` option requires"):
             lm.regplot(long_df, x="x", y="y", **{option: True})
 
     def test_regress_logx(self):
@@ -669,7 +680,7 @@ class TestRegressionPlots:
     @pytest.mark.parametrize("option", ["robust", "lowess"])
     @pytest.mark.skipif(not _no_statsmodels, reason="statsmodels installed")
     def test_residplot_statsmodels_missing_errors(self, long_df, option):
-        with pytest.raises(RuntimeError, match=rf"`{option}=True` requires"):
+        with pytest.raises(RuntimeError, match=rf"`{option}` option requires"):
             lm.residplot(long_df, x="x", y="y", **{option: True})
 
     def test_three_point_colors(self):

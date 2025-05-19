@@ -246,7 +246,7 @@ class Grid(_BaseGrid):
         # Now clear the legend
         ax.legend_ = None
 
-    def _get_palette(self, data, hue, hue_order, palette):
+    def _get_palette(self, data, hue, hue_order, palette) -> List[Union[str, Tuple[float, float, float]]]:
         """Get a list of colors for the hue variable."""
         if hue is None:
             palette = color_palette(n_colors=1)

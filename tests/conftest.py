@@ -5,20 +5,20 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def close_figs():
+def close_figs() -> None:
     yield
     import matplotlib.pyplot as plt
     plt.close("all")
 
 
 @pytest.fixture(autouse=True)
-def random_seed():
+def random_seed() -> None:
     seed = sum(map(ord, "seaborn random global"))
     np.random.seed(seed)
 
 
 @pytest.fixture()
-def rng():
+def rng() -> np.random.RandomState:
     seed = sum(map(ord, "seaborn random object"))
     return np.random.RandomState(seed)
 

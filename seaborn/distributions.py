@@ -1,9 +1,11 @@
 """Plotting functions for visualizing distributions."""
+from typing import Union
 from numbers import Number
 from functools import partial
 import math
 import textwrap
 import warnings
+import sys
 
 import numpy as np
 import pandas as pd
@@ -138,28 +140,17 @@ class _DistributionPlotter(VectorPlotter):
     ):
         """Add artists that reflect semantic mappings and put then in a legend."""
         # TODO note that this doesn't handle numeric mappings like the relational plots
-        handles = []
-        labels = []
-        for level in self._hue_map.levels:
-            color = self._hue_map(level)
-
-            kws = self._artist_kws(
-                artist_kws, fill, element, multiple, color, alpha
-            )
-
-            # color gets added to the kws to workaround an issue with barplot's color
-            # cycle integration but it causes problems in this context where we are
-            # setting artist properties directly, so pop it off here
-            if "facecolor" in kws:
-                kws.pop("color", None)
-
-            handles.append(artist(**kws))
-            labels.append(level)
+        handles = (artist(**self._artist_kws(artist_kws, fill, element, multiple, self._hue_map(level), alpha))
+                for level in self._hue_map.levels)
+        labels = (level for level in self._hue_map.levels)
+        # Convert to lists for legend function.
+        handles_list = list(handles)
+        labels_list = list(labels)
 
         if isinstance(ax_obj, mpl.axes.Axes):
-            ax_obj.legend(handles, labels, title=self.variables["hue"], **legend_kws)
+            ax_obj.legend(handles_list, labels_list, title=self.variables["hue"], **legend_kws)
         else:  # i.e. a FacetGrid. TODO make this better
-            legend_data = dict(zip(labels, handles))
+            legend_data = dict(zip(labels_list, handles_list))
             ax_obj.add_legend(
                 legend_data,
                 title=self.variables["hue"],
@@ -190,39 +181,68 @@ class _DistributionPlotter(VectorPlotter):
             kws["color"] = to_rgba(color, alpha)
         return kws
 
-    def _quantile_to_level(self, data, quantile):
-        """Return data levels corresponding to quantile cuts of mass."""
-        isoprop = np.asarray(quantile)
+    def _quantile_to_level(self, data: np.ndarray, quantile: Union[float, int]) -> np.ndarray:
+        """
+        Calculates data levels corresponding to quantile cuts of data mass.
+
+        Parameters:
+            data : array-like
+                   Data to compute levels for.
+            quantile : float or int
+                       Quantile cuts of data mass.
+
+        Returns:
+           levels : array-like
+                Data levels corresponding to quantile cuts of data mass.
+
+        """
+        if not isinstance(quantile, (float, int)):
+            raise TypeError("The quantile must be a float or an integer.")
         values = np.ravel(data)
+        isoprop = np.asarray(quantile)
         sorted_values = np.sort(values)[::-1]
-        normalized_values = np.cumsum(sorted_values) / values.sum()
+        total_mass = np.sum(values)
+        normalized_values = np.cumsum(sorted_values) / total_mass
         idx = np.searchsorted(normalized_values, 1 - isoprop)
         levels = np.take(sorted_values, idx, mode="clip")
         return levels
 
     def _cmap_from_color(self, color):
-        """Return a sequential colormap given a color seed."""
+        """Return a sequential colormap given a color seed.
+
+        This function generates a colormap that smoothly varies based on 
+        the input color. It utilizes HUSL for hue and saturation manipulation.
+
+        Parameters
+            color: The color seed (can be a string or tuple representing RGBA).
+
+        Returns
+            ListedColormap: A Matplotlib colormap based on the input color.
+        """
         # Like so much else here, this is broadly useful, but keeping it
         # in this class to signify that I haven't thought overly hard about it...
+        # Convert color to RGBA.
         r, g, b, _ = to_rgba(color)
+        # Convert color to HUSL.
         h, s, _ = husl.rgb_to_husl(r, g, b)
+        # Generating a color ramp from -1 to 1 for consistent color scale
+        # manipulation.
         xx = np.linspace(-1, 1, int(1.15 * 256))[:256]
+        # Generate a color ramp with constant hue and varying saturation and lightness.
         ramp = np.zeros((256, 3))
-        ramp[:, 0] = h
-        ramp[:, 1] = s * np.cos(xx)
-        ramp[:, 2] = np.linspace(35, 80, 256)
+        ramp[:, 0] = h  # Keep hue constant
+        ramp[:, 1] = s * np.cos(xx)  # Vary saturation based on cosine function.
+        ramp[:, 2] = np.linspace(35, 80, 256)  # Vary lightness.
+        # Convert HUSL values back to RGB and clip to valid range.
         colors = np.clip([husl.husl_to_rgb(*hsl) for hsl in ramp], 0, 1)
+        # Return a ListedColormap object.
         return mpl.colors.ListedColormap(colors[::-1])
 
     def _default_discrete(self):
         """Find default values for discrete hist estimation based on variable type."""
         if self.univariate:
-            discrete = self.var_types[self.data_variable] == "categorical"
-        else:
-            discrete_x = self.var_types["x"] == "categorical"
-            discrete_y = self.var_types["y"] == "categorical"
-            discrete = discrete_x, discrete_y
-        return discrete
+            return self.var_types[self.data_variable] == "categorical"
+        return (self.var_types["x"] == "categorical", self.var_types["y"] == "categorical")
 
     def _resolve_multiple(self, curves, multiple):
         """Modify the density data structure to handle multiple densities."""
@@ -305,12 +325,17 @@ class _DistributionPlotter(VectorPlotter):
     ):
 
         # Initialize the estimator object
-        estimator = KDE(**estimate_kws)
+        estimator = None
+        if data_variable:
+            estimator = KDE(**estimate_kws)
 
         if set(self.variables) - {"x", "y"}:
             if common_grid:
                 all_observations = self.comp_data.dropna()
-                estimator.define_support(all_observations[data_variable])
+                try:
+                    estimator.define_support(all_observations[data_variable])
+                except KeyError:
+                    raise ValueError(f"The data variable '{data_variable}' is not in the dataset.")
         else:
             common_norm = False
 
@@ -348,8 +373,8 @@ class _DistributionPlotter(VectorPlotter):
 
             if singular:
                 msg = (
-                    "Dataset has 0 variance; skipping density estimate. "
-                    "Pass `warn_singular=False` to disable this warning."
+                    f"Dataset has 0 variance; skipping density estimate. "
+                    f"Pass `warn_singular=False` to disable this warning."
                 )
                 if warn_singular:
                     warnings.warn(msg, UserWarning, stacklevel=4)
@@ -1053,6 +1078,8 @@ class _DistributionPlotter(VectorPlotter):
         # Loop through the subsets and estimate the KDEs
         densities, supports = {}, {}
 
+        has_weights = "weights" in self.variables
+
         for sub_vars, sub_data in self.iter_data("hue", from_comp_data=True):
 
             # Extract the data points from this sub set
@@ -1061,7 +1088,7 @@ class _DistributionPlotter(VectorPlotter):
             observations = observations["x"], observations["y"]
 
             # Extract the weights for this subset of observations
-            if "weights" in self.variables:
+            if has_weights:
                 weights = sub_data["weights"]
             else:
                 weights = None

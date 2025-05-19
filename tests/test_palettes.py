@@ -13,14 +13,14 @@ from seaborn.colors import xkcd_rgb, crayons
 
 class TestColorPalettes:
 
-    def test_current_palette(self):
+    def test_current_palette(self) -> None:
 
         pal = palettes.color_palette(["red", "blue", "green"])
         rcmod.set_palette(pal)
         assert pal == utils.get_color_cycle()
         rcmod.set()
 
-    def test_palette_context(self):
+    def test_palette_context(self) -> None:
 
         default_pal = palettes.color_palette()
         context_pal = palettes.color_palette("muted")

@@ -1,5 +1,7 @@
 import colorsys
 from itertools import cycle
+from typing import Tuple, Union, Callable
+import os
 
 import numpy as np
 import matplotlib as mpl
@@ -59,27 +61,55 @@ QUAL_PALETTES = list(QUAL_PALETTE_SIZES.keys())
 
 
 class _ColorPalette(list):
-    """Set the color palette in a with statement, otherwise be a list."""
+    """Set the color palette within a context manager; otherwise, behaves like a list."""
+
     def __enter__(self):
-        """Open the context."""
+        """Open the context and set the current color palette.
+
+        Returns
+        -------
+        self : _ColorPalette
+
+        """
         from .rcmod import set_palette
-        self._orig_palette = color_palette()
-        set_palette(self)
+        self._orig_palette = color_palette()  # Store the original palette
+        set_palette(self)  # Set the new palette
         return self
 
     def __exit__(self, *args):
-        """Close the context."""
+        """Close the context and restore the original color palette.
+
+        Parameters
+        ----------
+        *args :
+            Ignored.
+
+        """
         from .rcmod import set_palette
         set_palette(self._orig_palette)
 
     def as_hex(self):
-        """Return a color palette with hex codes instead of RGB values."""
+        """Return a color palette with hex codes instead of RGB values.
+
+        Returns
+        -------
+        hex : _ColorPalette
+            A color palette with hex codes instead of RGB values.
+
+        """
         hex = [mpl.colors.rgb2hex(rgb) for rgb in self]
         return _ColorPalette(hex)
 
     def _repr_html_(self):
-        """Rich display of the color palette in an HTML frontend."""
-        s = 55
+        """Rich display of the color palette in an HTML frontend.
+
+        Returns
+        -------
+        html : str
+            An HTML representation of the color palette.
+
+        """
+        s = 55  # Size of each color square
         n = len(self)
         html = f'<svg  width="{n * s}" height="{s}">'
         for i, c in enumerate(self.as_hex()):
@@ -91,19 +121,23 @@ class _ColorPalette(list):
         return html
 
 
-def _patch_colormap_display():
+def _patch_colormap_display() -> None:
     """Simplify the rich display of matplotlib color maps in a notebook."""
+
     def _repr_png_(self):
         """Generate a PNG representation of the Colormap."""
         import io
         from PIL import Image
         import numpy as np
-        IMAGE_SIZE = (400, 50)
-        X = np.tile(np.linspace(0, 1, IMAGE_SIZE[0]), (IMAGE_SIZE[1], 1))
-        pixels = self(X, bytes=True)
-        png_bytes = io.BytesIO()
-        Image.fromarray(pixels).save(png_bytes, format='png')
-        return png_bytes.getvalue()
+        try:
+            IMAGE_SIZE = (400, 50)
+            X = np.tile(np.linspace(0, 1, IMAGE_SIZE[0]), (IMAGE_SIZE[1], 1))
+            pixels = self(X, bytes=True)
+            png_bytes = io.BytesIO()
+            Image.fromarray(pixels).save(png_bytes, format='png')
+            return png_bytes.getvalue()
+        except Exception as e:
+            raise RuntimeError("Failed to generate PNG representation: {}".format(e))
 
     def _repr_html_(self):
         """Generate an HTML representation of the Colormap."""
@@ -363,7 +397,7 @@ def husl_palette(n_colors=6, h=.01, s=.9, l=.65, as_cmap=False):  # noqa
         return _ColorPalette(palette)
 
 
-def mpl_palette(name, n_colors=6, as_cmap=False):
+def mpl_palette(name, n_colors=6, as_cmap=False) -> Union[mpl.colors.ListedColormap, _ColorPalette]:
     """
     Return a palette or colormap from the matplotlib registry.
 
@@ -417,7 +451,7 @@ def mpl_palette(name, n_colors=6, as_cmap=False):
         return _ColorPalette(palette)
 
 
-def _color_to_rgb(color, input):
+def _color_to_rgb(color: Union[Tuple[float, float, float], str], input: str) -> Tuple[float, float, float]:
     """Add some more flexibility to color choices."""
     if input == "hls":
         color = colorsys.hls_to_rgb(*color)
@@ -425,6 +459,8 @@ def _color_to_rgb(color, input):
         color = husl.husl_to_rgb(*color)
         color = tuple(np.clip(color, 0, 1))
     elif input == "xkcd":
+        if not isinstance(color, str):
+            raise ValueError("For XKCD input, color must be a string representing the color name.")
         color = xkcd_rgb[color]
 
     return mpl.colors.to_rgb(color)

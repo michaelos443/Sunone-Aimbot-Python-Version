@@ -1,4 +1,5 @@
 """Plotting functions for linear models (broadly construed)."""
+
 import copy
 from textwrap import dedent
 import warnings
@@ -6,6 +7,8 @@ import numpy as np
 import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.axes as maxes
+from typing import Dict, Any, Tuple, Optional, Callable, Union, List
 
 try:
     import statsmodels
@@ -21,6 +24,9 @@ from .axisgrid import FacetGrid, _facet_docs
 
 __all__ = ["lmplot", "regplot", "residplot"]
 
+DEFAULT_ALPHA = 0.8
+NUM_GRID_POINTS = 100
+
 
 class _LinearPlotter:
     """Base class for plotting relational data in tidy format.
@@ -29,23 +35,18 @@ class _LinearPlotter:
     code that can be abstracted out should be put here.
 
     """
-    def establish_variables(self, data, **kws):
+    def establish_variables(self, data: pd.DataFrame, **kws: Dict[str, Any]) -> None:
         """Extract variables from data or use directly."""
         self.data = data
 
         # Validate the inputs
-        any_strings = any([isinstance(v, str) for v in kws.values()])
+        any_strings = any(isinstance(v, str) for v in kws.values())
         if any_strings and data is None:
             raise ValueError("Must pass `data` if using named variables.")
 
         # Set the variables
         for var, val in kws.items():
-            if isinstance(val, str):
-                vector = data[val]
-            elif isinstance(val, list):
-                vector = np.asarray(val)
-            else:
-                vector = val
+            vector = data[val] if isinstance(val, str) else np.asarray(val)
             if vector is not None and vector.shape != (1,):
                 vector = np.squeeze(vector)
             if np.ndim(vector) > 1:
@@ -53,17 +54,21 @@ class _LinearPlotter:
                 raise ValueError(err)
             setattr(self, var, vector)
 
-    def dropna(self, *vars):
+    def dropna(self, *vars: str) -> None:
         """Remove observations with missing data."""
+        # Retrieve values for the specified variables.
         vals = [getattr(self, var) for var in vars]
-        vals = [v for v in vals if v is not None]
+        vals = list(filter(None, vals))
         not_na = np.all(np.column_stack([pd.notnull(v) for v in vals]), axis=1)
+        if not np.any(not_na):
+            warnings.warn("All values are missing for the variables: {}".format(vars))
+        # Drop observations with missing data from the specified variables.
         for var in vars:
             val = getattr(self, var)
             if val is not None:
                 setattr(self, var, val[not_na])
 
-    def plot(self, ax):
+    def plot(self, ax: maxes.Axes) -> None:
         raise NotImplementedError
 
 
@@ -101,7 +106,10 @@ class _RegressionPlotter(_LinearPlotter):
 
         # Validate the regression options:
         if sum((order > 1, logistic, robust, lowess, logx)) > 1:
-            raise ValueError("Mutually exclusive regression options.")
+            raise ValueError(
+                "Mutually exclusive regression options: 'order > 1', 'logistic', 'robust', 'lowess',"
+                " 'logx' cannot be used together."
+            )
 
         # Extract the data vals from the arguments or passed dataframe
         self.establish_variables(data, x=x, y=y, units=units,
@@ -120,8 +128,7 @@ class _RegressionPlotter(_LinearPlotter):
         # Possibly bin the predictor variable, which implies a point estimate
         if x_bins is not None:
             self.x_estimator = np.mean if x_estimator is None else x_estimator
-            x_discrete, x_bins = self.bin_predictor(x_bins)
-            self.x_discrete = x_discrete
+            self.x_discrete = np.unique(self.bin_predictor(x_bins)[0])
         else:
             self.x_discrete = self.x
 
@@ -135,18 +142,11 @@ class _RegressionPlotter(_LinearPlotter):
 
     @property
     def scatter_data(self):
-        """Data where each observation is a point."""
-        x_j = self.x_jitter
-        if x_j is None:
-            x = self.x
-        else:
-            x = self.x + np.random.uniform(-x_j, x_j, len(self.x))
-
-        y_j = self.y_jitter
-        if y_j is None:
-            y = self.y
-        else:
-            y = self.y + np.random.uniform(-y_j, y_j, len(self.y))
+        """Data where each observation is a point, optionally jittered."""
+        x = self.x + (np.random.uniform(-self.x_jitter, self.x_jitter, len(self.x)) 
+                      if self.x_jitter is not None else 0)
+        y = self.y + (np.random.uniform(-self.y_jitter, self.y_jitter, len(self.y)) 
+                      if self.y_jitter is not None else 0)
 
         return x, y
 
@@ -188,12 +188,16 @@ class _RegressionPlotter(_LinearPlotter):
     def _check_statsmodels(self):
         """Check whether statsmodels is installed if any boolean options require it."""
         options = "logistic", "robust", "lowess"
-        err = "`{}=True` requires statsmodels, an optional dependency, to be installed."
+        err = "`{}` option requires `statsmodels` (optional dependency). Install it with `pip install statsmodels`."
         for option in options:
             if getattr(self, option) and not _has_statsmodels:
-                raise RuntimeError(err.format(option))
+                warnings.warn(err.format(option), UserWarning)
 
-    def fit_regression(self, ax=None, x_range=None, grid=None):
+    def fit_regression(
+            self,
+            ax: Optional[maxes.Axes] = None,
+            x_range: Optional[Tuple[float, float]] = None,
+            grid: Optional[np.ndarray]=None) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
         """Fit the regression model."""
         self._check_statsmodels()
 
@@ -206,7 +210,7 @@ class _RegressionPlotter(_LinearPlotter):
                     x_min, x_max = x_range
                 else:
                     x_min, x_max = ax.get_xlim()
-            grid = np.linspace(x_min, x_max, 100)
+            grid = np.linspace(x_min, x_max, NUM_GRID_POINTS)
         ci = self.ci
 
         # Fit the regression
@@ -236,14 +240,23 @@ class _RegressionPlotter(_LinearPlotter):
 
         return grid, yhat, err_bands
 
-    def fit_fast(self, grid):
-        """Low-level regression and prediction using linear algebra."""
+    def fit_fast(self, grid: np.ndarray) -> tuple:
+        """Perform low-level regression and prediction using linear algebra.
+        
+        Args:
+            grid (np.ndarray): A 2D array of input features to predict values for.
+
+        Returns:
+            tuple: a tuple containing:
+                - yhat (np.ndarray): The predicted values on the grid.
+                - yhat_boots (np.ndarray or None): Bootstrapped predictions (if ci is not None), else None.
+        """
         def reg_func(_x, _y):
             return np.linalg.pinv(_x).dot(_y)
 
         X, y = np.c_[np.ones(len(self.x)), self.x], self.y
         grid = np.c_[np.ones(len(grid)), grid]
-        yhat = grid.dot(reg_func(X, y))
+        yhat = grid @ reg_func(X, y)
         if self.ci is None:
             return yhat, None
 
@@ -279,7 +292,7 @@ class _RegressionPlotter(_LinearPlotter):
         grid = np.c_[np.ones(len(grid)), grid]
 
         def reg_func(_x, _y):
-            err_classes = (sme.PerfectSeparationError,)
+            err_classes = (sme.PerfectSeparationError, AttributeError)
             try:
                 with warnings.catch_warnings():
                     if hasattr(sme, "PerfectSeparationWarning"):
@@ -309,7 +322,7 @@ class _RegressionPlotter(_LinearPlotter):
         grid, yhat = lowess(self.y, self.x).T
         return grid, yhat
 
-    def fit_logx(self, grid):
+    def fit_logx(self, grid: np.ndarray) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """Fit the model in log-space."""
         X, y = np.c_[np.ones(len(self.x)), self.x], self.y
         grid = np.c_[np.ones(len(grid)), np.log(grid)]
@@ -330,8 +343,16 @@ class _RegressionPlotter(_LinearPlotter):
         yhat_boots = grid.dot(beta_boots).T
         return yhat, yhat_boots
 
-    def bin_predictor(self, bins):
-        """Discretize a predictor by assigning value to closest bin."""
+    def bin_predictor(self, bins: Union[int, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Discretize a predictor by assigning value to closest bin.
+
+        Args:
+            bins (Union[int, np.ndarray]): Number of bins or array of bin edges.
+
+        Returns:
+            (Tuple[np.ndarray, np.ndarray]): Discretized predictor values and bins used for binning.
+        """
         x = np.asarray(self.x)
         if np.isscalar(bins):
             percentiles = np.linspace(0, 100, bins + 2)[1:-1]
@@ -344,7 +365,7 @@ class _RegressionPlotter(_LinearPlotter):
 
         return x_binned, bins
 
-    def regress_out(self, a, b):
+    def regress_out(self, a: np.ndarray, b: np.ndarray) -> np.ndarray:
         """Regress b from a keeping a's original mean."""
         a_mean = a.mean()
         a = a - a_mean
@@ -353,7 +374,27 @@ class _RegressionPlotter(_LinearPlotter):
         a_prime = a - b.dot(np.linalg.pinv(b).dot(a))
         return np.asarray(a_prime + a_mean).reshape(a.shape)
 
-    def plot(self, ax, scatter_kws, line_kws):
+    def _get_color(self, ax: maxes.Axes) -> str:
+        """
+        Retrieves the color of the first plot line in the given axis.
+
+        Args:
+            ax (matplotlib.axes.Axes): The axes object from which the color is retrieved.
+
+        Returns:
+            str: The color of the first plot line in the axes.
+        """
+        # Check if there are any lines in the axes.
+        lines = ax.get_lines()
+        if not lines:
+            raise ValueError("No lines found in the axes.")
+        # Plot an empty line to get the color.
+        lines, = ax.plot([], [])
+        color = lines.get_color()
+        lines.remove()
+        return color
+
+    def plot(self, ax: maxes.Axes, scatter_kws: Dict[str, Any], line_kws: Dict[str, Any]) -> None:
         """Draw the full plot."""
         # Insert the plot label into the correct set of keyword arguments
         if self.scatter:
@@ -362,12 +403,7 @@ class _RegressionPlotter(_LinearPlotter):
             line_kws["label"] = self.label
 
         # Use the current color cycle state as a default
-        if self.color is None:
-            lines, = ax.plot([], [])
-            color = lines.get_color()
-            lines.remove()
-        else:
-            color = self.color
+        color = self.color or self._get_color(ax)
 
         # Ensure that color is hex to avoid matplotlib weirdness
         color = mpl.colors.rgb2hex(mpl.colors.colorConverter.to_rgb(color))
@@ -389,8 +425,15 @@ class _RegressionPlotter(_LinearPlotter):
         if hasattr(self.y, "name"):
             ax.set_ylabel(self.y.name)
 
-    def scatterplot(self, ax, kws):
-        """Draw the data."""
+    def scatterplot(self, ax: maxes.Axes, kws: Dict[str, Any]) -> None:
+        """
+        Draw the scatterplot.
+
+        Args:
+            ax (matplotlib.axes.Axes): The axes object on which the scatterplot is drawn.
+            kws (Dict[str, Any]): Keyword arguments passed to the scatter function.
+        """
+
         # Treat the line-based markers specially, explicitly setting larger
         # linewidth than is provided by the seaborn style defaults.
         # This would ideally be handled better in matplotlib (i.e., distinguish
@@ -405,7 +448,7 @@ class _RegressionPlotter(_LinearPlotter):
             kws.setdefault("linewidths", lw)
 
             if not hasattr(kws['color'], 'shape') or kws['color'].shape[1] < 4:
-                kws.setdefault("alpha", .8)
+                kws.setdefault("alpha", DEFAULT_ALPHA)
 
             x, y = self.scatter_data
             ax.scatter(x, y, **kws)
@@ -423,8 +466,15 @@ class _RegressionPlotter(_LinearPlotter):
                     ax.plot([x, x], ci, **ci_kws)
             ax.scatter(xs, ys, **kws)
 
-    def lineplot(self, ax, kws):
-        """Draw the model."""
+    def lineplot(self, ax: maxes.Axes, kws: Dict[str, Any]) -> None:
+        """
+        Draw the model.
+
+        Args:
+            ax (matplotlib.axes.Axes): The axes object on which the regression line is drawn.
+            kws (Dict[str, Any]): Keyword arguments passed to the plot function.
+        """
+
         # Fit the regression model
         grid, yhat, err_bands = self.fit_regression(ax)
         edges = grid[0], grid[-1]

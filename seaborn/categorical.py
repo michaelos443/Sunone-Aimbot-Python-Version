@@ -1,6 +1,7 @@
 from collections import namedtuple
 from textwrap import dedent
 import warnings
+import collections
 from colorsys import rgb_to_hls
 from functools import partial
 

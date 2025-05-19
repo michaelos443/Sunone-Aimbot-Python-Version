@@ -39,8 +39,10 @@ from seaborn._testing import (
     assert_colors_equal,
 )
 
+from typing import Union
 
-def get_contour_coords(c, filter_empty=False):
+
+def get_contour_coords(c, filter_empty=False) -> list[np.ndarray]:
     """Provide compatability for change in contour artist types."""
     if isinstance(c, mpl.collections.LineCollection):
         # See https://github.com/matplotlib/matplotlib/issues/20906
@@ -52,7 +54,7 @@ def get_contour_coords(c, filter_empty=False):
         ]
 
 
-def get_contour_color(c):
+def get_contour_color(c) -> Union[str, np.ndarray]:
     """Provide compatability for change in contour artist types."""
     if isinstance(c, mpl.collections.LineCollection):
         # See https://github.com/matplotlib/matplotlib/issues/20906
@@ -2445,7 +2447,7 @@ class TestDisPlot:
         x, y = rng.normal(0, 1, (2, 100))
         z = [0] * 80 + [1] * 20
 
-        def count_contours(ax):
+        def count_contours(ax) -> int:
             if _version_predates(mpl, "3.8.0rc1"):
                 return sum(bool(get_contour_coords(c)) for c in ax.collections)
             else:

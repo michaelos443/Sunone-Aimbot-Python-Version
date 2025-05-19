@@ -1,5 +1,6 @@
 """Functions to visualize matrices of data."""
-import warnings
+from warnings import warn
+from typing import List, Tuple, Union
 
 import matplotlib as mpl
 from matplotlib.collections import LineCollection
@@ -10,7 +11,9 @@ import pandas as pd
 try:
     from scipy.cluster import hierarchy
     _no_scipy = False
-except ImportError:
+except ImportError as e:
+    warn(f"Failed to import scipy.cluster.hierarchy. Clustering will not work. "
+         f"Install scipy for proper clustering. {e}")
     _no_scipy = True
 
 from . import cm
@@ -28,15 +31,16 @@ from .utils import (
 __all__ = ["heatmap", "clustermap"]
 
 
-def _index_to_label(index):
+def _index_to_label(index) -> str:
     """Convert a pandas index or multiindex to an axis label."""
     if isinstance(index, pd.MultiIndex):
-        return "-".join(map(to_utf8, index.names))
+        names = index.names
     else:
-        return index.name
+        names = [index.name] if index.name is not None else []
+    return "-".join(map(to_utf8, names))
 
 
-def _index_to_ticklabels(index):
+def _index_to_ticklabels(index) -> List[str]:
     """Convert a pandas index or multiindex into ticklabels."""
     if isinstance(index, pd.MultiIndex):
         return ["-".join(map(to_utf8, i)) for i in index.values]
@@ -44,20 +48,20 @@ def _index_to_ticklabels(index):
         return index.values
 
 
-def _convert_colors(colors):
+def _convert_colors(colors) -> Union[List[float], List[List[float]]]:
     """Convert either a list of colors or nested lists of colors to RGB."""
     to_rgb = mpl.colors.to_rgb
 
-    try:
-        to_rgb(colors[0])
-        # If this works, there is only one level of colors
-        return list(map(to_rgb, colors))
-    except ValueError:
-        # If we get here, we have nested lists
+    # Check if the first element is a list
+    if isinstance(colors, list) and (colors and isinstance(colors[0], list)):
+        # Nested lists
         return [list(map(to_rgb, color_list)) for color_list in colors]
+    else:
+        # Single list
+        return list(map(to_rgb, colors))
 
 
-def _matrix_mask(data, mask):
+def _matrix_mask(data, mask) -> pd.DataFrame:
     """Ensure that data and mask are compatible and add missing values.
 
     Values will be plotted for cells where ``mask`` is ``False``.
@@ -72,7 +76,11 @@ def _matrix_mask(data, mask):
     if isinstance(mask, np.ndarray):
         # For array masks, ensure that shape matches data then convert
         if mask.shape != data.shape:
-            raise ValueError("Mask must have the same shape as data.")
+            raise ValueError(
+                f"Mask must have the same shape as data. Got {mask.shape} for mask and "
+                f"{data.shape} for data. Ensure that the mask array has the same dimensions "
+                f"as the input data for proper masking."
+            )
 
         mask = pd.DataFrame(mask,
                             index=data.index,
@@ -83,13 +91,13 @@ def _matrix_mask(data, mask):
         # For DataFrame masks, ensure that semantic labels match data
         if not mask.index.equals(data.index) \
            and mask.columns.equals(data.columns):
-            err = "Mask must have the same index and columns as data."
+            err = _("Mask must have the same index and columns as data.")
             raise ValueError(err)
 
     # Add any cells with missing data to the mask
     # This works around an issue where `plt.pcolormesh` doesn't represent
     # missing data properly
-    mask = mask | pd.isnull(data)
+    mask |= pd.isnull(data)
 
     return mask
 
@@ -98,9 +106,37 @@ class _HeatMapper:
     """Draw a heatmap plot of a matrix with nice labels and colormaps."""
 
     def __init__(self, data, vmin, vmax, cmap, center, robust, annot, fmt,
-                 annot_kws, cbar, cbar_kws,
+                 annot_kws=None, cbar=True, cbar_kws=None,
                  xticklabels=True, yticklabels=True, mask=None):
-        """Initialize the plotting object."""
+        """
+        Initialize the HeatMapper object.
+
+        Parameters:
+        data : DataFrame or ndarray
+            The matrix data to be plotted.
+        vmin, vmax : floats, optional
+            Minimum and maximum values for the color range.
+        cmap : str, optional
+            The colormap to use.
+        center : float, optional
+            If provided, a central value for diverging colormaps.
+        robust : bool, optional
+            Whether to compute colormap limits using robust statistics.
+        annot : bool or DataFrame, optional
+            Whether to add textual annotations to each cell.
+        fmt : str, optional
+            String formatting code for annotations.
+        annot_kws : dict, optional
+            Keyword arguments for annotation styling.
+        cbar : bool, optional
+            Whether to include a colorbar.
+        cbar_kws : dict, optional
+            Keyword arguments for colorbar styling.
+        xticklabels, yticklabels : bool or list, optional
+            Whether to display or customize x/y tick labels.
+        mask : ndarray, optional
+            A mask for which cells to display.
+        """
         # We always want to have a DataFrame with semantic information
         # and an ndarray to pass to matplotlib
         if isinstance(data, pd.DataFrame):
@@ -112,7 +148,7 @@ class _HeatMapper:
         # Validate the mask and convert to DataFrame
         mask = _matrix_mask(data, mask)
 
-        plot_data = np.ma.masked_where(np.asarray(mask), plot_data)
+        plot_data = np.where(mask, np.nan, plot_data)
 
         # Get good names for the rows and columns
         xtickevery = 1
@@ -156,8 +192,8 @@ class _HeatMapper:
         # Get good names for the axis labels
         xlabel = _index_to_label(data.columns)
         ylabel = _index_to_label(data.index)
-        self.xlabel = xlabel if xlabel is not None else ""
-        self.ylabel = ylabel if ylabel is not None else ""
+        self.xlabel: str = xlabel if xlabel is not None else ""
+        self.ylabel: str = ylabel if ylabel is not None else ""
 
         # Determine good default values for the colormapping
         self._determine_cmap_params(plot_data, vmin, vmax,
@@ -262,8 +298,27 @@ class _HeatMapper:
                 text_kwargs.update(self.annot_kws)
                 ax.text(x, y, annotation, **text_kwargs)
 
-    def _skip_ticks(self, labels, tickevery):
-        """Return ticks and labels at evenly spaced intervals."""
+    def _skip_ticks(self, labels: List[str], tickevery: int) -> Tuple[np.ndarray, List[str]]:
+        """
+        Return tick positions and corresponding labels at evenly spaced intervals based on `tickevery`.
+
+        Parameters:
+        -----------
+        labels : List[str]
+            A list of label strings for the ticks.
+        tickevery : int
+            The interval at which to place ticks. 
+            - If `tickevery == 0`, no ticks are returned.
+            - If `tickevery == 1`, all ticks are returned.
+            - Otherwise, ticks are placed every `tickevery` intervals.
+
+        Returns:
+        --------
+        ticks : np.ndarray
+            Array of tick positions adjusted by +0.5 for correct placement.
+        labels : List[str]
+            A list of labels corresponding to the tick positions.
+        """
         n = len(labels)
         if tickevery == 0:
             ticks, labels = [], []
@@ -285,7 +340,7 @@ class _HeatMapper:
         fontsize = tick.label1.get_size()
         max_ticks = int(size // (fontsize / 72))
         if max_ticks < 1:
-            return [], []
+            raise ValueError("Maximum ticks cannot be less than 1.")
         tick_every = len(labels) // max_ticks + 1
         tick_every = 1 if tick_every == 0 else tick_every
         ticks, labels = self._skip_ticks(labels, tick_every)
@@ -557,7 +612,7 @@ class _DendrogramPlotter:
             if np.prod(self.shape) >= 10000:
                 msg = ("Clustering large matrix with scipy. Installing "
                        "`fastcluster` may give better performance.")
-                warnings.warn(msg)
+                warn(msg)
 
         return self._calculate_linkage_scipy()
 
@@ -898,7 +953,29 @@ class ClusterGrid(Grid):
             return standardized.T
 
     def dim_ratios(self, colors, dendrogram_ratio, colors_ratio):
-        """Get the proportions of the figure taken up by each axes."""
+        """Calculate the proportions of the figure occupied by each axis.
+
+        This method computes the ratios of space allocated to the dendrogram, 
+        color annotations, and the heatmap within a figure. The total figure 
+        space is divided into sections based on the provided ratios.
+
+        Parameters:
+            colors (array-like or None): 
+                An array representing color data encoded in RGB format. If None, 
+                no color annotations are included, and the function will only 
+                calculate the dendrogram and heatmap ratios.
+            dendrogram_ratio (float): 
+                The proportion of the figure allocated to the dendrogram. 
+                Must be a value between 0 and 1.
+            colors_ratio (float): 
+                The proportion of the figure allocated to the color annotations 
+                per color dimension. This should also be a value between 0 and 1.
+
+        Returns:
+            list: 
+                A list of proportions for the dendrogram, color annotations, 
+                and heatmap, ensuring that the sum of the ratios equals 1.
+        """
         ratios = [dendrogram_ratio]
 
         if colors is not None:
@@ -1121,7 +1198,7 @@ class ClusterGrid(Grid):
         # not compatible with the multi-axes layout of clustergrid
         if kws.get("square", False):
             msg = "``square=True`` ignored in clustermap"
-            warnings.warn(msg)
+            warn(msg)
             kws.pop("square")
 
         colorbar_kws = {} if colorbar_kws is None else colorbar_kws

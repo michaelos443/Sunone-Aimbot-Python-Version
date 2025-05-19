@@ -106,7 +106,7 @@ def theme_context(params: dict[str, Any]) -> Generator:
             mpl.colors.colorConverter.colors[code] = color
 
 
-def build_plot_signature(cls):
+def build_plot_signature(cls) -> Callable:
     """
     Decorator function for giving Plot a useful signature.
 
@@ -151,7 +151,7 @@ class ThemeConfig(mpl.RcParams):
         "xaxis", "xtick", "yaxis", "ytick",
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.reset()
 
@@ -169,7 +169,7 @@ class ThemeConfig(mpl.RcParams):
         """Update the theme dictionary with seaborn's default values."""
         self.update(self._default)
 
-    def update(self, other: dict[str, Any] | None = None, /, **kwds):
+    def update(self, other: dict[str, Any] | None = None, /, **kwds) -> None:
         """Update the theme with a dictionary or keyword arguments of rc parameters."""
         if other is not None:
             theme = self._filter_params(other)
@@ -983,7 +983,7 @@ class Plotter:
     _layers: list[Layer]
     _figure: Figure
 
-    def __init__(self, pyplot: bool, theme: dict[str, Any]):
+    def __init__(self, pyplot: bool, theme: dict[str, Any]) -> None:
 
         self._pyplot = pyplot
         self._theme = theme

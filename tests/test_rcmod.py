@@ -74,30 +74,45 @@ class TestAxesStyle(RCParamFixtures):
 
     styles = ["white", "dark", "whitegrid", "darkgrid", "ticks"]
 
-    def test_default_return(self):
+    def test_default_return(self) -> None:
+        """
+        Test that the default return value is correct.
+        """
 
         current = rcmod.axes_style()
         self.assert_rc_params(current)
 
-    def test_key_usage(self):
+    def test_key_usage(self) -> None:
+        """
+        Test that the keys of the return value are correct.
+        """
 
         _style_keys = set(rcmod._style_keys)
         for style in self.styles:
             assert not set(rcmod.axes_style(style)) ^ _style_keys
 
-    def test_bad_style(self):
+    def test_bad_style(self) -> None:
+        """
+        Test that an error is raised if an invalid style is provided.
+        """
 
         with pytest.raises(ValueError):
             rcmod.axes_style("i_am_not_a_style")
 
-    def test_rc_override(self):
+    def test_rc_override(self) -> None:
+        """
+        Test that the rc parameter overrides the default style.
+        """
 
         rc = {"axes.facecolor": "blue", "foo.notaparam": "bar"}
         out = rcmod.axes_style("darkgrid", rc)
         assert out["axes.facecolor"] == "blue"
         assert "foo.notaparam" not in out
 
-    def test_set_style(self):
+    def test_set_style(self) -> None:
+        """
+        Test that the set_style function correctly sets the style.
+        """
 
         for style in self.styles:
 
@@ -106,7 +121,10 @@ class TestAxesStyle(RCParamFixtures):
             self.assert_rc_params(style_dict)
 
     def test_style_context_manager(self):
-
+        """
+        Test that the style context manager correctly temporarily sets the style
+        and restores the original style after exiting the context.
+        """
         rcmod.set_style("darkgrid")
         orig_params = rcmod.axes_style()
         context_params = rcmod.axes_style("whitegrid")
@@ -116,12 +134,16 @@ class TestAxesStyle(RCParamFixtures):
         self.assert_rc_params(orig_params)
 
         @rcmod.axes_style("whitegrid")
-        def func():
+        def func() -> None:
             self.assert_rc_params(context_params)
         func()
         self.assert_rc_params(orig_params)
 
-    def test_style_context_independence(self):
+    def test_style_context_independence(self) -> None:
+        """
+        Test that the style context manager does not affect the context
+        manager for the plotting context.
+        """
 
         assert set(rcmod._style_keys) ^ set(rcmod._context_keys)
 
@@ -224,7 +246,10 @@ class TestPlottingContext(RCParamFixtures):
         assert out[key] == val
         assert "foo" not in out
 
-    def test_set_context(self):
+    def test_set_context(self) -> None:
+        """
+        Test 
+        """
 
         for context in self.contexts:
 
@@ -233,6 +258,10 @@ class TestPlottingContext(RCParamFixtures):
             self.assert_rc_params(context_dict)
 
     def test_context_context_manager(self):
+        """
+        Test that the context context manager correctly temporarily sets the context
+        and restores the original context after exiting the context.
+        """
 
         rcmod.set_context("notebook")
         orig_params = rcmod.plotting_context()
@@ -243,7 +272,7 @@ class TestPlottingContext(RCParamFixtures):
         self.assert_rc_params(orig_params)
 
         @rcmod.plotting_context("paper")
-        def func():
+        def func() -> None:
             self.assert_rc_params(context_params)
         func()
         self.assert_rc_params(orig_params)
@@ -252,6 +281,9 @@ class TestPlottingContext(RCParamFixtures):
 class TestPalette(RCParamFixtures):
 
     def test_set_palette(self):
+        """
+        Test 
+        """
 
         rcmod.set_palette("deep")
         assert utils.get_color_cycle() == palettes.color_palette("deep", 10)
@@ -286,7 +318,10 @@ class TestFonts(RCParamFixtures):
 
         rcmod.set_theme()
 
-    def test_set_serif_font(self):
+    def test_set_serif_font(self) -> None:
+        """
+        Test that the set_font function correctly sets the font to a serif font.
+        """
 
         rcmod.set_theme(font="serif")
 

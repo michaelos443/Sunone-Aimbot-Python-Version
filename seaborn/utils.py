@@ -1,5 +1,6 @@
 """Utility functions, mostly for internal use."""
 import os
+import sys
 import inspect
 import warnings
 import colorsys

@@ -1,3 +1,5 @@
+from typing import List, Tuple, Union
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
@@ -19,7 +21,7 @@ __all__ = ["choose_colorbrewer_palette", "choose_cubehelix_palette",
            "choose_diverging_palette"]
 
 
-def _init_mutable_colormap():
+def _init_mutable_colormap() -> LinearSegmentedColormap:
     """Create a matplotlib colormap that will be updated by the widgets."""
     greys = color_palette("Greys", 256)
     cmap = LinearSegmentedColormap.from_list("interactive", greys)
@@ -29,13 +31,35 @@ def _init_mutable_colormap():
 
 
 def _update_lut(cmap, colors):
-    """Change the LUT values in a matplotlib colormap in-place."""
+    """Change the LUT values in a matplotlib colormap in-place.
+
+    Parameters
+    ----------
+    cmap : matplotlib colormap
+        The colormap to be updated.
+    colors : array-like
+        The new LUT values. Must be an array of shape (256, 3) or (256, 4).
+    """
+    # Validate cmap.
+    if not hasattr(cmap, '_lut'):
+        raise TypeError("The provided cmap must be a valid Matplotlib colormap object.")
+    # Validate colors
+    colors = np.asarray(colors)
+    if colors.shape != (256, 3) and colors.shape != (256, 4):
+        raise ValueError("Colors must be an array of shape (256, 3) or (256, 4).")
+    # Update LUT
     cmap._lut[:256] = colors
     cmap._set_extremes()
 
 
 def _show_cmap(cmap):
-    """Show a continuous matplotlib colormap."""
+    """Show a continuous matplotlib colormap.
+
+    Parameters
+    ----------
+    cmap : matplotlib colormap
+        The colormap to be shown.
+    """
     from .rcmod import axes_style  # Avoid circular import
     with axes_style("white"):
         f, ax = plt.subplots(figsize=(8.25, .75))
@@ -44,7 +68,10 @@ def _show_cmap(cmap):
     ax.pcolormesh(x, cmap=cmap)
 
 
-def choose_colorbrewer_palette(data_type, as_cmap=False):
+def choose_colorbrewer_palette(
+        data_type,
+        as_cmap=False,
+) -> Union[List[Union[str, Tuple[float, float, float]]], LinearSegmentedColormap]:
     """Select a palette from the ColorBrewer set.
 
     These palettes are built into matplotlib and can be used by name in

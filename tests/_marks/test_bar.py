@@ -114,15 +114,15 @@ class TestBar:
 class TestBars:
 
     @pytest.fixture
-    def x(self):
+    def x(self) -> pd.Series:
         return pd.Series([4, 5, 6, 7, 8], name="x")
 
     @pytest.fixture
-    def y(self):
+    def y(self) -> pd.Series:
         return pd.Series([2, 8, 3, 5, 9], name="y")
 
     @pytest.fixture
-    def color(self):
+    def color(self) -> pd.Series:
         return pd.Series(["a", "b", "c", "a", "c"], name="color")
 
     def test_positions(self, x, y):

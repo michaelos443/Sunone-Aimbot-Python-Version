@@ -6,7 +6,7 @@ import matplotlib.ticker as ticker
 __all__ = ["palplot", "dogplot"]
 
 
-def palplot(pal, size=1):
+def palplot(pal, size=1) -> None:
     """Plot the values in a color palette as a horizontal array.
 
     Parameters
@@ -30,7 +30,7 @@ def palplot(pal, size=1):
     ax.yaxis.set_major_locator(ticker.NullLocator())
 
 
-def dogplot(*_, **__):
+def dogplot(*_, **__) -> None:
     """Who's a good boy?"""
     from urllib.request import urlopen
     from io import BytesIO
