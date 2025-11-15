@@ -50,11 +50,10 @@ Precompiled `.exe` builds are available for both **DirectML** (Universal support
 
 ## 📝 How to Use
 
-Both versions are **ready-to-use** — simply download, unpack the archive, and run `ai.exe`.
+Both versions are **ready-to-use** — simply download, and run `ai.exe`.
 
 1. **Download** the appropriate version based on your GPU and system configuration.
-2. **Unpack** the archive to a directory of your choice.
-3. **Run `ai.exe`** and follow the on-screen instructions in the overlay.
+2. **Run `ai.exe`** and follow the on-screen instructions in the overlay.
 
 No need to compile or worry about dependencies, everything is pre-packaged for a seamless experience.
 
